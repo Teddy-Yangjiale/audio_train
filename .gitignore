@@ -1,0 +1,35 @@
+# Binary / compiled
+analyzer.exe
+*.pth
+*.onnx
+*.onnx.*
+*.pkl
+
+# Data & datasets
+X_features.npy
+y_labels.npy
+label_map.npy
+speech_commands/
+audio_cnn_v1.pth
+audio_resnet_30class.pth
+audio_cnn_30class.pth
+
+# Generated outputs
+checkpoints/
+*.log
+train.log
+scaler.pkl
+evaluation_report.txt
+confusion_matrix.png
+dataset_stats.png
+tsne_embeddings.png
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
