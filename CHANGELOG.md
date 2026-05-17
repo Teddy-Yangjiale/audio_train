@@ -240,5 +240,57 @@ audio_train/
 ├── checkpoints/             # 训练检查点
 ├── requirements.txt
 ├── README.md
-└── CHANGELOG.md
+├── CHANGELOG.md
+│
+└── bandwidth_extension/       # 频带拓展子项目
+    ├── config_bwe.py           # BWE 配置
+    ├── models_bwe.py           # AudioUNet 模型
+    ├── data_utils_bwe.py        # 音频加载/降采样/分段
+    ├── losses_bwe.py            # L1 + 多分辨率 STFT 损失
+    ├── trainer_bwe.py           # BWE 训练器
+    ├── train_bwe.py             # BWE 训练入口
+    ├── inference_bwe.py         # BWE 推理（低 SR → 高 SR）
+    └── evaluate_bwe.py          # BWE 评估（SNR/LSD/频谱对比）
 ```
+
+---
+
+## v2.0 — 频带拓展 / 音频超分辨率（2026-05-13）
+
+### 新增子项目：`bandwidth_extension/`
+
+音频频带拓展（Bandwidth Extension）：将低采样率音频（如 8kHz）重建为高采样率（如 16kHz）。
+
+### 新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `bandwidth_extension/config_bwe.py` | LOW_SR=8000, HIGH_SR=16000, SEGMENT=0.5s, 多分辨率 STFT 损失 |
+| `bandwidth_extension/models_bwe.py` | **AudioUNet**：5 层 encoder-decoder U-Net，stride=4，~19.6M 参数，`infer()` 重叠分块推理 |
+| `bandwidth_extension/data_utils_bwe.py` | scipy WAV 加载 → 重采样 → 降采样生成低质输入 → 固定段切分 |
+| `bandwidth_extension/losses_bwe.py` | L1(时域) + Multi-Resolution STFT(频域)，3 尺度 FFT [2048,1024,512]，含 SNR/LSD 指标 |
+| `bandwidth_extension/trainer_bwe.py` | AdamW + ReduceLROnPlateau + 梯度裁剪 + Early Stopping + Checkpoint |
+| `bandwidth_extension/train_bwe.py` | 训练入口：`--epochs/batch-size/lr/low-sr/high-sr/limit` |
+| `bandwidth_extension/inference_bwe.py` | 低 SR WAV → 线性插值 + AudioUNet → 高 SR WAV |
+| `bandwidth_extension/evaluate_bwe.py` | SNR 分布/LSD/频谱对比图 |
+
+### 管道
+
+```
+低采样率音频 (8kHz) → 线性插值 16kHz → AudioUNet 精细化 → 高采样率音频 (16kHz)
+```
+
+### 架构
+
+- **Encoder**: Conv1d(1→64→128→256→512→512) + BN + LeakyReLU, stride=4
+- **Bottleneck**: 2×Conv1d(512,512) 残差
+- **Decoder**: ConvTranspose1d + skip + Conv1d
+- **Output**: Tanh
+- **Loss**: 100*L1 + 1*STFT (3 scales)
+
+### 验证
+
+- 前向通过：(2,1,8000)→(2,1,8000) ✓
+- 数据管线：50 文件 → 200 段 ✓
+- 训练：100 文件, 2 epoch → SNR 7.1 dB, LSD 1.55
+- 推理：单 WAV 正常输出 ✓

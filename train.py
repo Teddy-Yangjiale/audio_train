@@ -66,8 +66,12 @@ def main():
         )
         in_channels = X_train_flat.shape[1]
 
-    model = create_model(args.model, num_classes=len(label_names),
-                         in_channels=in_channels)
+    if args.model == "mlp":
+        model = create_model(args.model, num_classes=len(label_names),
+                             input_size=in_channels)
+    else:
+        model = create_model(args.model, num_classes=len(label_names),
+                             in_channels=in_channels)
 
     cw = _compute_class_weights(y_train) if args.class_weights else None
     trainer = Trainer(

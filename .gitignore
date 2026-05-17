@@ -16,13 +16,16 @@ audio_cnn_30class.pth
 
 # Generated outputs
 checkpoints/
+checkpoints_bwe/
 *.log
 train.log
+train_bwe.log
 scaler.pkl
 evaluation_report.txt
 confusion_matrix.png
 dataset_stats.png
 tsne_embeddings.png
+spectrogram_comparison.png
 
 # Python
 __pycache__/
