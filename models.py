@@ -94,6 +94,63 @@ class Audio1DCNN(nn.Module):
 
 
 # ==========================================
+# Depthwise-separable CNN
+# ==========================================
+class SeparableBlock1D(nn.Module):
+    """Depthwise conv + pointwise conv, with a residual path when shapes match."""
+
+    def __init__(self, in_channels, out_channels, kernel_size=9, stride=1):
+        super(SeparableBlock1D, self).__init__()
+        self.depthwise = nn.Sequential(
+            nn.Conv1d(in_channels, in_channels, kernel_size, stride=stride,
+                      padding=kernel_size // 2, groups=in_channels),
+            nn.BatchNorm1d(in_channels),
+            nn.ReLU(),
+        )
+        self.pointwise = nn.Sequential(
+            nn.Conv1d(in_channels, out_channels, kernel_size=1),
+            nn.BatchNorm1d(out_channels),
+        )
+        self.use_residual = (stride == 1 and in_channels == out_channels)
+
+    def forward(self, x):
+        out = self.pointwise(self.depthwise(x))
+        if self.use_residual:
+            out = out + x
+        return torch.relu(out)
+
+
+class AudioDSCNN(nn.Module):
+    """Depthwise-separable 1D CNN — same accuracy target as AudioResNet at ~5% of its size."""
+
+    def __init__(self, num_classes, in_channels=26, width=64):
+        super(AudioDSCNN, self).__init__()
+        self.in_conv = nn.Sequential(
+            nn.Conv1d(in_channels, width, kernel_size=3, padding=1),
+            nn.BatchNorm1d(width),
+            nn.ReLU(),
+        )
+        self.blocks = nn.Sequential(
+            SeparableBlock1D(width, width),
+            SeparableBlock1D(width, width * 2, stride=2),
+            SeparableBlock1D(width * 2, width * 2),
+            SeparableBlock1D(width * 2, width * 4, stride=2),
+        )
+        self.avg_pool = nn.AdaptiveAvgPool1d(1)
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Dropout(0.2),
+            nn.Linear(width * 4, num_classes),
+        )
+
+    def forward(self, x):
+        x = self.in_conv(x)
+        x = self.blocks(x)
+        x = self.avg_pool(x)
+        return self.classifier(x)
+
+
+# ==========================================
 # MLP (kept for backward compatibility)
 # ==========================================
 class AudioMLP(nn.Module):
@@ -119,6 +176,7 @@ class AudioMLP(nn.Module):
 _MODEL_REGISTRY = {
     "resnet": AudioResNet,
     "cnn": Audio1DCNN,
+    "dscnn": AudioDSCNN,
     "mlp": AudioMLP,
 }
 

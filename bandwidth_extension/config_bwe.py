@@ -28,6 +28,7 @@ class BWEConfig:
     WEIGHT_DECAY = 0.0
     GRAD_CLIP = 1.0
     EARLY_STOP_PATIENCE = 30
+    LR_PATIENCE = 4                  # epochs without val improvement before LR is halved
 
     # Loss weights
     L1_WEIGHT = 100.0

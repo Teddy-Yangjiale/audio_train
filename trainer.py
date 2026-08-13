@@ -45,10 +45,15 @@ def build_loaders(X_train, y_train, X_val, y_val, X_test=None, y_test=None,
 
 
 class AugmentedTensorDataset(Dataset):
-    def __init__(self, X, y, augment_prob=0.5):
+    """Online SpecAugment + time shift, applied independently per sample."""
+
+    def __init__(self, X, y, augment_prob=0.5, shift_prob=0.5, shift_frames=None):
         self.X = torch.FloatTensor(X)
         self.y = torch.LongTensor(y)
         self.prob = augment_prob
+        self.shift_prob = shift_prob
+        self.shift_frames = (Config.TIME_SHIFT_FRAMES if shift_frames is None
+                             else shift_frames)
 
     def __len__(self):
         return len(self.X)
@@ -57,10 +62,15 @@ class AugmentedTensorDataset(Dataset):
         x = self.X[idx]
         y = self.y[idx]
 
-        if np.random.random() < self.prob:
-            from augmentation import spec_augment
-            x_np = x.numpy().T
-            x_np = spec_augment(x_np)
+        do_spec = np.random.random() < self.prob
+        do_shift = self.shift_frames > 0 and np.random.random() < self.shift_prob
+        if do_spec or do_shift:
+            from augmentation import spec_augment, time_shift
+            x_np = x.numpy().T          # (frames, features)
+            if do_shift:
+                x_np = time_shift(x_np, max_shift_frames=self.shift_frames)
+            if do_spec:
+                x_np = spec_augment(x_np)
             x = torch.FloatTensor(x_np.T)
 
         return x, y

@@ -104,6 +104,8 @@ class AudioUNet(nn.Module):
         )
 
     def forward(self, x):
+        inp = x
+
         # Encoder
         skips = []
         for enc in self.encoders:
@@ -118,7 +120,11 @@ class AudioUNet(nn.Module):
             skip = skips[-(i + 2)]
             x = dec(x, skip)
 
-        return self.output_conv(x)
+        residual = self.output_conv(x)
+        if residual.shape[-1] != inp.shape[-1]:
+            residual = torch.nn.functional.pad(
+                residual, (0, inp.shape[-1] - residual.shape[-1]))
+        return inp + residual
 
     def infer(self, low_res_audio):
         """Process variable-length audio in overlapping chunks."""

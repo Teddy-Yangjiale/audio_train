@@ -27,19 +27,25 @@ def most_confused_pairs(cm, label_names, top_n=10):
 
 def main():
     parser = argparse.ArgumentParser(description="Evaluate a trained model on the test set")
-    parser.add_argument("--model", default="resnet", choices=["resnet", "cnn"])
+    parser.add_argument("--model", default="resnet", choices=["resnet", "cnn", "dscnn"])
     parser.add_argument("--weights", default="audio_resnet_30class.pth")
     parser.add_argument("--delta-delta", action="store_true")
+    parser.add_argument("--speaker-split", action="store_true",
+                        help="Speaker-disjoint split (official Speech Commands protocol)")
+    parser.add_argument("--features", default=None, choices=["analyzer", "torch"])
     args = parser.parse_args()
 
     Config.init_env()
+    if args.features is not None:
+        Config.use_feature_set(args.features)
 
     print("=" * 55)
     print(f"  Evaluate {args.model.upper()} on Test Set")
     print("=" * 55)
 
     X_train, X_val, X_test, y_train, y_val, y_test, label_names, _ = \
-        split_and_scale(use_delta_delta=args.delta_delta)
+        split_and_scale(use_delta_delta=args.delta_delta,
+                        speaker_split=args.speaker_split)
     _, _, test_loader = build_loaders(X_train, y_train, X_val, y_val, X_test, y_test)
 
     model = create_model(args.model, num_classes=len(label_names),

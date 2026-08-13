@@ -1,12 +1,16 @@
+import hashlib
 import os
 import json
 import logging
+import re
 import subprocess
 import joblib
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from config import Config
+
+MAX_UTTERANCES_PER_CLASS = 2 ** 27 - 1
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +25,66 @@ def load_raw_features():
     return X, y, label_names
 
 
+def which_set(filename, val_pct, test_pct):
+    """Assign a WAV file to train/val/test by speaker hash (Warden 2018, §7).
+
+    All utterances of one speaker land in the same split, so a model cannot be
+    scored on a speaker it was trained on.
+    """
+    base = os.path.basename(filename)
+    speaker = re.sub(r"_nohash_.*$", "", base)
+    digest = hashlib.sha1(speaker.encode("utf-8")).hexdigest()
+    percentage = (int(digest, 16) % (MAX_UTTERANCES_PER_CLASS + 1)) * \
+        (100.0 / MAX_UTTERANCES_PER_CLASS)
+    if percentage < val_pct:
+        return "val"
+    if percentage < val_pct + test_pct:
+        return "test"
+    return "train"
+
+
+def dataset_filenames(label_names):
+    """Rebuild the per-row file list produced by collect_data.py.
+
+    Row order is class-major, matching the label array; verified against the
+    per-class sample counts before use.
+    """
+    from collect_data import SAMPLES_PER_CLASS
+
+    paths = []
+    for label in label_names:
+        folder = os.path.join(Config.DATA_DIR, label)
+        files = [f for f in os.listdir(folder) if f.endswith(".wav")]
+        paths.extend(os.path.join(folder, f) for f in files[:SAMPLES_PER_CLASS])
+    return paths
+
+
+def speaker_split_indices(y, label_names, val_size, test_size):
+    # Extractors that record per-row paths give an exact mapping; otherwise the
+    # file list is rebuilt and validated against the per-class counts.
+    if Config.PATHS_FILE and os.path.exists(Config.PATHS_FILE):
+        paths = list(np.load(Config.PATHS_FILE, allow_pickle=True))
+    else:
+        paths = dataset_filenames(label_names)
+    if len(paths) != len(y):
+        raise RuntimeError(
+            f"Cannot reconstruct file list: {len(paths)} files vs {len(y)} feature rows. "
+            "Re-run collect_data.py so features and dataset stay in sync."
+        )
+    for idx, label in enumerate(label_names):
+        expected = int((y == idx).sum())
+        found = sum(1 for p in paths if os.path.basename(os.path.dirname(p)) == label)
+        if expected != found:
+            raise RuntimeError(f"Class '{label}' count mismatch: {found} files vs {expected} rows.")
+
+    assignment = np.array([which_set(p, val_size * 100, test_size * 100) for p in paths])
+    return (np.where(assignment == "train")[0],
+            np.where(assignment == "val")[0],
+            np.where(assignment == "test")[0])
+
+
 def split_and_scale(test_size=None, val_size=None, random_state=None,
-                    use_delta_delta=False):
+                    use_delta_delta=False, speaker_split=False):
     X, y, label_names = load_raw_features()
 
     if test_size is None:
@@ -37,15 +99,23 @@ def split_and_scale(test_size=None, val_size=None, random_state=None,
         X = compute_delta_delta(X)
         logger.info("Delta-delta features added: shape = " + str(X.shape))
 
-    # Step 1: Split off test set (unseen until final evaluation)
-    X_temp, X_test, y_temp, y_test = train_test_split(
-        X, y, test_size=test_size, random_state=random_state, stratify=y
-    )
-    # Step 2: Split remaining into train & val
-    val_ratio = val_size / (1.0 - test_size)
-    X_train, X_val, y_train, y_val = train_test_split(
-        X_temp, y_temp, test_size=val_ratio, random_state=random_state, stratify=y_temp
-    )
+    if speaker_split:
+        tr_idx, val_idx, test_idx = speaker_split_indices(
+            y, label_names, val_size, test_size)
+        X_train, y_train = X[tr_idx], y[tr_idx]
+        X_val, y_val = X[val_idx], y[val_idx]
+        X_test, y_test = X[test_idx], y[test_idx]
+        logger.info("Speaker-disjoint split (Warden 2018 hashing)")
+    else:
+        # Step 1: Split off test set (unseen until final evaluation)
+        X_temp, X_test, y_temp, y_test = train_test_split(
+            X, y, test_size=test_size, random_state=random_state, stratify=y
+        )
+        # Step 2: Split remaining into train & val
+        val_ratio = val_size / (1.0 - test_size)
+        X_train, X_val, y_train, y_val = train_test_split(
+            X_temp, y_temp, test_size=val_ratio, random_state=random_state, stratify=y_temp
+        )
 
     # Step 3: Fit scaler on TRAINING SET ONLY and transform all splits
     num_samples, num_frames, num_features = X_train.shape
@@ -85,6 +155,11 @@ def compute_delta_delta(X):
     delta_part = X[:, :, half:]  # (N, frames, 13) - the delta features
     delta2 = np.diff(delta_part, axis=1, prepend=delta_part[:, :1, :])
     return np.concatenate([X, delta2], axis=-1)
+
+
+def flatten_features(X):
+    """Flatten (N, channels, frames) into (N, channels * frames) for dense models."""
+    return X.reshape(X.shape[0], -1)
 
 
 def load_scaler():

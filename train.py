@@ -9,7 +9,7 @@ Examples:
     python train.py --model resnet --scheduler cosine
 """
 import argparse
-from data_utils import split_and_scale
+from data_utils import split_and_scale, flatten_features
 from models import create_model
 from trainer import Trainer, build_loaders, _compute_class_weights
 from config import Config
@@ -21,12 +21,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    parser.add_argument("--model", default="resnet", choices=["resnet", "cnn", "mlp"])
+    parser.add_argument("--model", default="resnet",
+                        choices=["resnet", "cnn", "dscnn", "mlp"])
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--lr", type=float, default=None)
     parser.add_argument("--no-augment", action="store_true")
     parser.add_argument("--delta-delta", action="store_true")
+    parser.add_argument("--speaker-split", action="store_true",
+                        help="Speaker-disjoint split (official Speech Commands protocol)")
+    parser.add_argument("--features", default=None, choices=["analyzer", "torch"],
+                        help="Feature set to train on (default: analyzer)")
     parser.add_argument("--class-weights", action="store_true",
                         help="Use inverse-frequency class weights for imbalance")
     parser.add_argument("--label-smoothing", type=float, default=None)
@@ -34,6 +39,8 @@ def main():
     parser.add_argument("--resume", default=None,
                         help="Path to checkpoint for resuming training")
     parser.add_argument("--output", default=None, help="Output weights filename")
+    parser.add_argument("--checkpoint-dir", default=None,
+                        help="Checkpoint directory (use a separate one per concurrent run)")
     args = parser.parse_args()
 
     # Apply CLI overrides to Config
@@ -41,13 +48,18 @@ def main():
         Config.LR = args.lr
     if args.epochs is not None:
         Config.EPOCHS = args.epochs
+    if args.checkpoint_dir is not None:
+        Config.CHECKPOINT_DIR = args.checkpoint_dir
+    if args.features is not None:
+        Config.use_feature_set(args.features)
 
     print("=" * 55)
     print(f"  {args.model.upper()} Training")
     print("=" * 55)
 
     X_train, X_val, X_test, y_train, y_val, y_test, label_names, _ = \
-        split_and_scale(use_delta_delta=args.delta_delta)
+        split_and_scale(use_delta_delta=args.delta_delta,
+                        speaker_split=args.speaker_split)
 
     in_channels = X_train.shape[1]
     batch_size = args.batch_size or (64 if args.model == "cnn" else Config.BATCH_SIZE)
@@ -57,9 +69,11 @@ def main():
     )
 
     if args.model == "mlp":
-        X_train_flat = X_train.mean(axis=-1)
-        X_val_flat = X_val.mean(axis=-1)
-        X_test_flat = X_test.mean(axis=-1)
+        # Flatten (channels, frames) instead of averaging over time, which would
+        # throw away the temporal structure the MFCC deltas encode.
+        X_train_flat = flatten_features(X_train)
+        X_val_flat = flatten_features(X_val)
+        X_test_flat = flatten_features(X_test)
         train_loader, val_loader, test_loader = build_loaders(
             X_train_flat, y_train, X_val_flat, y_val, X_test_flat, y_test,
             batch_size=batch_size, augment=False,

@@ -25,7 +25,12 @@ def main():
     parser.add_argument("--limit", type=int, default=None,
                         help="Limit number of WAV files (for quick testing)")
     parser.add_argument("--output", default="audio_unet_bwe.pth")
+    parser.add_argument("--checkpoint-dir", default=None,
+                        help="Checkpoint directory (use a separate one per concurrent run)")
     args = parser.parse_args()
+
+    if args.checkpoint_dir is not None:
+        BWEConfig.CHECKPOINT_DIR = args.checkpoint_dir
 
     if args.low_sr is not None:
         BWEConfig.LOW_SR = args.low_sr

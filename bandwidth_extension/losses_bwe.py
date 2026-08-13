@@ -75,11 +75,16 @@ def compute_snr(pred, target):
 
 
 def compute_lsd(pred, target, n_fft=2048, hop=512):
-    """Log Spectral Distance."""
+    """Log-spectral distance in dB: RMS over frequency bins, averaged over frames.
+
+    Matches the definition used in the audio super-resolution literature
+    (Kuleshov et al. 2017), so values are directly comparable to published LSD.
+    """
     pred_mag = stft_mag(pred.unsqueeze(0), n_fft, hop)
     target_mag = stft_mag(target.unsqueeze(0), n_fft, hop)
-    lsd = torch.mean(torch.sqrt(
-        torch.mean((torch.log(pred_mag + 1e-7) - torch.log(target_mag + 1e-7)) ** 2,
-                   dim=0)
-    ))
-    return lsd.item()
+    # Power spectra with a -80 dB floor: without it, the numerically-silent
+    # high band of the low-res input yields meaningless LSD values.
+    pred_db = 10 * torch.log10(pred_mag ** 2 + 1e-8)
+    target_db = 10 * torch.log10(target_mag ** 2 + 1e-8)
+    per_frame = torch.sqrt(torch.mean((pred_db - target_db) ** 2, dim=1))
+    return per_frame.mean().item()

@@ -9,11 +9,22 @@ class Config:
     FEATURE_FILE = "X_features.npy"
     LABEL_FILE = "y_labels.npy"
     LABEL_MAP_FILE = "label_map.npy"
+    PATHS_FILE = None            # per-row WAV paths, when the extractor saved them
     SCALER_FILE = "scaler.pkl"
     EXCLUDE = ["_background_noise_"]
 
     NUM_FRAMES = 40
     NUM_MFCC = 13
+
+    # Feature sets: "analyzer" = analyzer.exe (125 ms hop, ~8 frames/clip),
+    #               "torch"    = torchaudio (10 ms hop, 101 frames/clip)
+    # (features, labels, label map, paths, frames, time-shift frames ≈ ±100 ms)
+    FEATURE_SETS = {
+        "analyzer": ("X_features.npy", "y_labels.npy", "label_map.npy", None, 40, 1),
+        "torch": ("X_features_torch.npy", "y_labels_torch.npy",
+                  "label_map_torch.npy", "paths_torch.npy", 101, 10),
+    }
+    TIME_SHIFT_FRAMES = 1
 
     # Training
     BATCH_SIZE = 256
@@ -42,6 +53,15 @@ class Config:
     CHECKPOINT_DIR = "checkpoints"
     LOG_FILE = "train.log"
     SAVE_BEST_ONLY = True       # if False, save every epoch
+
+    @classmethod
+    def use_feature_set(cls, name):
+        if name not in cls.FEATURE_SETS:
+            raise ValueError(f"Unknown feature set '{name}'. "
+                             f"Available: {list(cls.FEATURE_SETS)}")
+        (cls.FEATURE_FILE, cls.LABEL_FILE, cls.LABEL_MAP_FILE,
+         cls.PATHS_FILE, cls.NUM_FRAMES, cls.TIME_SHIFT_FRAMES) = cls.FEATURE_SETS[name]
+        cls.SCALER_FILE = f"scaler_{name}.pkl" if name != "analyzer" else "scaler.pkl"
 
     @classmethod
     def set_seed(cls, seed=None):

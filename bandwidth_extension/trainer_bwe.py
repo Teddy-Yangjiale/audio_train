@@ -36,7 +36,7 @@ class BWETrainer:
             model.parameters(), lr=BWEConfig.LR, weight_decay=BWEConfig.WEIGHT_DECAY,
         )
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer, mode="min", factor=0.5, patience=10,
+            self.optimizer, mode="min", factor=0.5, patience=BWEConfig.LR_PATIENCE,
         )
 
         os.makedirs(BWEConfig.CHECKPOINT_DIR, exist_ok=True)
