@@ -197,5 +197,5 @@ python inference_bwe.py input.wav output.wav --model audio_unet_bwe.pth
 
 评测务必与朴素上采样基线对比（`benchmark_bwe.py` 会自动输出该行）：
 本数据集高频能量很低，"什么都不做"本身就有 29.45 dB SNR，
-单看模型的 SNR 绝对值会严重误判效果。当前模型 LSD 8.94 dB（基线 23.85 dB），
-SNR 27.21 dB（基线 29.45 dB）—— 谱保真度大幅改善，波形保真度略低于基线。
+单看模型的 SNR 绝对值会严重误判效果。当前模型 LSD 8.83 dB（基线 23.85 dB），
+SNR 27.96 dB（基线 29.45 dB）—— 谱保真度大幅改善，波形保真度略低于基线。

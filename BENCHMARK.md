@@ -145,12 +145,19 @@ Final results, 300 test segments (150 s of audio), identical metric for every ro
 |---|---|---|
 | Naive upsample (model input, i.e. "do nothing") | **29.45 dB** | 23.85 dB |
 | AudioUNet, before residual fix | 6.44 dB | 16.67 dB |
-| AudioUNet, after residual fix | 27.21 dB | **8.94 dB** |
+| AudioUNet v1 — LR 2e-4, scheduler patience 10 | 27.21 dB | 8.94 dB |
+| AudioUNet v2 — LR 1e-4, scheduler patience 4 | **27.96 dB** | **8.83 dB** |
 
-19.65M parameters, real-time factor 0.032 on 4 CPU threads (31.5× real time).
+19.65M parameters, real-time factor 0.033 on 4 CPU threads (30.6× real time).
 
-**Reading these numbers honestly.** The trained model improves LSD by 14.91 dB but is
-2.24 dB *below* the naive baseline in SNR. Both directions are real and consistent:
+**Training stability.** v1 swung between 18 and 27.6 dB val SNR at constant LR — the
+plateau scheduler with patience 10 never fired in 20 epochs. Halving the LR and dropping
+patience to 4 removed the oscillation and improved both metrics. **v2's best epoch was
+its last (epoch 24, val SNR 28.33 dB / LSD 8.66 dB), so the run was cut off by the epoch
+cap rather than converged** — more epochs are the cheapest remaining gain.
+
+**Reading these numbers honestly.** The trained model improves LSD by 15.02 dB but is
+1.49 dB *below* the naive baseline in SNR. Both directions are real and consistent:
 the network adds genuine high-band content (large spectral-envelope gain), while any
 added high-frequency energy that is not phase-aligned with the target is penalised by
 waveform SNR. On Speech Commands this makes SNR a weak metric — the 4–8 kHz band carries
@@ -176,11 +183,11 @@ python benchmark_bwe.py --model audio_unet_bwe.pth --limit 600
 
 ## 5. Open items
 
-- BWE training is unstable (val SNR swung 18–27.6 dB across epochs at constant LR — the
-  plateau scheduler never triggered in 20 epochs). A lower LR or warmup is the first thing
-  to try, together with training on more than 3,000 files.
-- BWE SNR is still below the naive-upsampling baseline; closing that gap is the concrete
-  next objective, not more epochs at the current settings.
+- BWE v2 was still improving when it hit the 24-epoch cap; a longer run (and more than
+  3,000 training files) is the cheapest remaining gain.
+- BWE SNR is still 1.49 dB below the naive-upsampling baseline. Closing that gap likely
+  needs a phase-aware objective rather than more L1 — the model already wins decisively
+  on spectral envelope.
 - BWE model is 19.65M parameters for a 2× task — likely heavily over-parameterised.
 - Waveform-domain augmentation (time shift + background-noise mixing) is still missing.
   The feature-domain time shift tried here gave no gain (§3), so this needs an on-the-fly
