@@ -84,6 +84,20 @@ model 26 inputs and no temporal information (12.36% accuracy). Flattening instea
 (`flatten_features()`) brings it to 64.82% — a meaningful no-convolution baseline, ~10
 points below the conv models.
 
+**Time-shift augmentation — no gain (measured).** Feature-domain time shift (±100 ms,
+scaled per feature set) was added alongside SpecAugment and changed nothing:
+
+| DS-CNN, torchaudio features | Val | Test |
+|---|---|---|
+| SpecAugment only | 96.29% | **95.49%** |
+| SpecAugment + time shift | 96.27% | 95.38% |
+
+−0.11 points, within run-to-run noise. Shifting an MFCC matrix pads with zeros rather
+than with real audio, and the global average pooling already gives the models substantial
+shift invariance. The ~1 point the literature attributes to augmentation comes from
+waveform-domain shift plus background-noise mixing, which requires re-extracting features
+each epoch — not implemented here.
+
 ### Published comparison (30/35-class settings)
 
 | System | Accuracy | Params | Source |
@@ -168,7 +182,8 @@ python benchmark_bwe.py --model audio_unet_bwe.pth --limit 600
 - BWE SNR is still below the naive-upsampling baseline; closing that gap is the concrete
   next objective, not more epochs at the current settings.
 - BWE model is 19.65M parameters for a 2× task — likely heavily over-parameterised.
-- Neither KWS model uses time-shift or background-noise augmentation, both standard in
-  the Speech Commands literature and worth ~1 point.
+- Waveform-domain augmentation (time shift + background-noise mixing) is still missing.
+  The feature-domain time shift tried here gave no gain (§3), so this needs an on-the-fly
+  waveform dataset rather than another pass over the cached features.
 - `analyzer.exe` remains the default front end; `--features torch` must be passed
   explicitly.
